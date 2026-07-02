@@ -7,11 +7,12 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
+from socket import timeout as SocketTimeout
 
 from .models import Paper
 
 
-ARXIV_API_URL = "http://export.arxiv.org/api/query"
+ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 
@@ -44,7 +45,12 @@ def fetch_recent_papers(
     return sorted(papers_by_id.values(), key=lambda paper: paper.updated, reverse=True)
 
 
-def fetch_query(search_query: str, max_results: int = 50, retries: int = 2) -> list[Paper]:
+def fetch_query(
+    search_query: str,
+    max_results: int = 50,
+    retries: int = 2,
+    timeout_seconds: int = 60,
+) -> list[Paper]:
     params = {
         "search_query": search_query,
         "start": "0",
@@ -59,15 +65,18 @@ def fetch_query(search_query: str, max_results: int = 50, retries: int = 2) -> l
     )
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 body = response.read()
             return parse_arxiv_feed(body)
         except urllib.error.HTTPError as exc:
             if exc.code not in {429, 503} or attempt >= retries:
                 raise
             retry_after = exc.headers.get("Retry-After")
-            delay = int(retry_after) if retry_after and retry_after.isdigit() else 10 * (attempt + 1)
-            time.sleep(delay)
+            _sleep_before_retry(attempt, retry_after)
+        except (TimeoutError, SocketTimeout, urllib.error.URLError):
+            if attempt >= retries:
+                raise
+            _sleep_before_retry(attempt)
     return []
 
 
@@ -142,3 +151,8 @@ def _parse_datetime(value: str | None) -> datetime:
 
 def _format_date_filter(start: datetime, end: datetime) -> str:
     return f"[{start:%Y%m%d%H%M} TO {end:%Y%m%d%H%M}]"
+
+
+def _sleep_before_retry(attempt: int, retry_after: str | None = None) -> None:
+    delay = int(retry_after) if retry_after and retry_after.isdigit() else 15 * (attempt + 1)
+    time.sleep(delay)

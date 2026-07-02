@@ -28,7 +28,7 @@ jobs:
         run: python -m pip install -e .
 
       - name: Generate digest
-        run: paper-digest
+        run: paper-digest --allow-fetch-failure
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}

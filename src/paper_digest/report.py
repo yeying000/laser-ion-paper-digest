@@ -12,6 +12,7 @@ def render_report(
     title: str,
     report_date: datetime,
     timezone: str,
+    warnings: list[str] | None = None,
 ) -> str:
     local_date = report_date.astimezone(ZoneInfo(timezone))
     date_text = local_date.strftime("%Y-%m-%d")
@@ -22,9 +23,15 @@ def render_report(
         f"- 入选论文数：{len(papers)}",
         "- 说明：本报告基于 arXiv 元数据和摘要自动生成；未在摘要中出现的参数不会被推断。",
         "",
-        "## 今日概览",
-        "",
     ]
+
+    if warnings:
+        lines.extend(["## 数据源告警", ""])
+        for warning in warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+
+    lines.extend(["## 今日概览", ""])
 
     if not papers:
         lines.extend(["今日未检索到达到相关性阈值的新论文或更新论文。", ""])

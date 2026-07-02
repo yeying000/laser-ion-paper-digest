@@ -23,6 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-papers", type=int, default=None, help="Override report max_papers.")
     parser.add_argument("--lookback-days", type=int, default=None, help="Override arXiv lookback_days.")
     parser.add_argument("--pause-seconds", type=float, default=3.0, help="Delay between arXiv requests.")
+    parser.add_argument(
+        "--allow-fetch-failure",
+        action="store_true",
+        help="Generate a warning report instead of failing when arXiv is temporarily unavailable.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print report instead of writing it.")
     args = parser.parse_args(argv)
 
@@ -32,13 +37,22 @@ def main(argv: list[str] | None = None) -> int:
     arxiv_config = config["arxiv"]
 
     print("Fetching arXiv papers...", file=sys.stderr)
-    papers = fetch_recent_papers(
-        queries=config["queries"],
-        categories=arxiv_config["categories"],
-        lookback_days=args.lookback_days or int(arxiv_config.get("lookback_days", 3)),
-        max_results=int(arxiv_config.get("max_results", 80)),
-        pause_seconds=args.pause_seconds,
-    )
+    warnings = []
+    try:
+        papers = fetch_recent_papers(
+            queries=config["queries"],
+            categories=arxiv_config["categories"],
+            lookback_days=args.lookback_days or int(arxiv_config.get("lookback_days", 3)),
+            max_results=int(arxiv_config.get("max_results", 80)),
+            pause_seconds=args.pause_seconds,
+        )
+    except Exception as exc:
+        if not args.allow_fetch_failure:
+            raise
+        warning = f"arXiv 暂时不可用，本次未能完成论文抓取：{exc}"
+        print(f"Warning: {warning}", file=sys.stderr)
+        warnings.append(warning)
+        papers = []
     print(f"Fetched {len(papers)} unique papers.", file=sys.stderr)
 
     ranked = rank_papers(papers, config["ranking"])
@@ -71,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         title=report_config.get("title", "Daily Paper Digest"),
         report_date=now,
         timezone=report_config.get("timezone", "UTC"),
+        warnings=warnings,
     )
 
     if args.dry_run:
