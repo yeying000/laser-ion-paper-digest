@@ -23,7 +23,8 @@ class ReportTests(unittest.TestCase):
             matched_terms=["laser ion acceleration"],
         )
         summary = PaperSummary(
-            one_sentence="This is a concise finding.",
+            research_category="实验",
+        one_sentence="This is a concise finding.",
             mechanism="TNSA",
             study_type="experiment",
             laser_parameters="摘要中未明确说明",

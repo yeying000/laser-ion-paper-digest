@@ -11,6 +11,7 @@ from .models import Paper, PaperSummary
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 SUMMARY_FIELDS = [
     "one_sentence",
+    "research_category",
     "mechanism",
     "study_type",
     "laser_parameters",
@@ -44,8 +45,15 @@ class OpenAISummarizer(Summarizer):
             "instructions": (
                 "你是激光等离子体和激光离子加速方向的文献助理。"
                 "只根据用户提供的标题、作者、分类和摘要总结，不要编造摘要中没有的实验参数。"
-                "覆盖范围包括实验进展、理论模型、PIC/流体模拟、靶材与诊断、束流输运和应用，"
-                "以及机器学习、贝叶斯优化、闭环控制、主动学习等交叉方向。"
+                "请先判断论文是否确实属于激光离子加速/激光驱动离子源相关研究，"
+                "依据包括 laser-driven ion/proton、laser-accelerated ion/proton、TNSA、RPA、BOA、MVA、"
+                "collisionless shock acceleration、near-critical density target 等核心证据。"
+                "如果核心相关性不足，将 research_category 写为‘其他/相关性存疑’，不要因为只出现材料缺陷、退火、半导体器件等词就判为相关。"
+                "若核心相关性成立，再将 research_category 归为以下之一：实验、理论/模拟、机器学习交叉、材料辐照交叉、器件辐照交叉、其他。"
+                "材料辐照交叉包括 radiation damage、irradiation damage、materials irradiation、defect formation/evolution、"
+                "point defect、vacancy、interstitial、defect cluster、microstructure evolution、recrystallization/recrystallisation、annealing 等。"
+                "器件辐照交叉包括 semiconductor device、electronics irradiation、single event effects、SEE、SEU、SEL、SET、SEB 等。"
+                "机器学习交叉包括 machine learning、Bayesian optimization/optimisation、closed-loop optimization、active learning、surrogate model、neural network 等。"
                 "输出必须是 JSON 对象，字段固定为："
                 + ", ".join(SUMMARY_FIELDS)
                 + "。如果摘要未提供某项信息，写“摘要中未明确说明”。"

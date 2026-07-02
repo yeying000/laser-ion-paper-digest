@@ -103,7 +103,9 @@ class PaperStore:
         ).fetchone()
         if not row or not row["summary_json"]:
             return None
-        return PaperSummary(**json.loads(row["summary_json"]))
+        payload = json.loads(row["summary_json"])
+        payload.setdefault("research_category", "其他")
+        return PaperSummary(**payload)
 
     def save_summary(self, paper_id: str, summary: PaperSummary) -> None:
         self.connection.execute(

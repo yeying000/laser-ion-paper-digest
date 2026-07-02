@@ -25,7 +25,8 @@ class StoreTests(unittest.TestCase):
                 categories=["physics.plasm-ph"],
             )
             summary = PaperSummary(
-                one_sentence="Finding.",
+                research_category="实验",
+        one_sentence="Finding.",
                 mechanism="TNSA",
                 study_type="experiment",
                 laser_parameters="摘要中未明确说明",

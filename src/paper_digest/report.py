@@ -39,10 +39,12 @@ def render_report(
 
     mechanisms = _count_by([summary.mechanism for _, summary in papers])
     study_types = _count_by([summary.study_type for _, summary in papers])
+    research_categories = _count_by([summary.research_category for _, summary in papers])
     lines.extend(
         [
             f"- 主要机制：{_format_counts(mechanisms)}",
             f"- 研究类型：{_format_counts(study_types)}",
+            f"- 方向分类：{_format_counts(research_categories)}",
             f"- 最高相关性分数：{max(paper.score for paper, _ in papers)}",
             "",
             "## 最值得优先阅读",
@@ -94,6 +96,7 @@ def _render_paper(index: int, paper: Paper, summary: PaperSummary) -> list[str]:
         f"- 相关性分数：{paper.score}",
         f"- 命中词：{', '.join(paper.matched_terms) if paper.matched_terms else '无'}",
         f"- 一句话结论：{summary.one_sentence}",
+        f"- 方向分类：{summary.research_category}",
         f"- 机制：{summary.mechanism}",
         f"- 研究类型：{summary.study_type}",
         f"- 激光参数：{summary.laser_parameters}",
