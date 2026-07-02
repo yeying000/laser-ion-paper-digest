@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import urllib.error
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -8,6 +9,7 @@ from paper_digest.models import Paper
 from paper_digest.sources import (
     _deduplicate_papers,
     _fetch_journal_watchlist,
+    _fetch_query_pages,
     _parse_crossref_work,
     _parse_openalex_work,
     _parse_semantic_scholar_paper,
@@ -164,3 +166,24 @@ class SourceParsingTests(unittest.TestCase):
         self.assertIn("laser-plasma", papers[0].categories)
         params = get_json.call_args.args[1]
         self.assertIn("issn:1089-7674", params["filter"])
+
+    def test_fetch_query_pages_skips_failed_query(self) -> None:
+        def fetch_items(query: str, per_query: int) -> list[dict[str, object]]:
+            if query == "bad":
+                raise urllib.error.HTTPError("https://example.org", 429, "Too Many Requests", {}, None)
+            return [
+                {
+                    "paperId": "abc",
+                    "title": "Laser-driven proton source",
+                    "abstract": "A compact laser-driven proton source is demonstrated.",
+                    "authors": [{"name": "A. Researcher"}],
+                    "url": "https://www.semanticscholar.org/paper/abc",
+                    "publicationDate": "2026-07-01",
+                    "externalIds": {"DOI": "10.1234/example"},
+                }
+            ]
+
+        papers = _fetch_query_pages(["bad", "good"], 10, fetch_items, _parse_semantic_scholar_paper, 0)
+
+        self.assertEqual(len(papers), 1)
+        self.assertEqual(papers[0].title, "Laser-driven proton source")

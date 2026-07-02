@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from datetime import UTC, datetime
 
-from paper_digest.arxiv import parse_arxiv_feed
+from paper_digest.arxiv import MAX_ARXIV_QUERY_URL_LENGTH, _chunk_queries_for_url, _query_url_length, parse_arxiv_feed
 
 
 class ArxivParsingTests(unittest.TestCase):
@@ -36,3 +37,24 @@ class ArxivParsingTests(unittest.TestCase):
         self.assertEqual(paper.pdf_url, "http://arxiv.org/pdf/2601.01234")
         self.assertEqual(paper.primary_category, "physics.plasm-ph")
         self.assertEqual(paper.doi, "10.1234/example")
+
+    def test_chunk_queries_keeps_arxiv_urls_short(self) -> None:
+        queries = [f'all:"laser-driven proton irradiation damage query {index}"' for index in range(80)]
+        categories = [
+            "physics.plasm-ph",
+            "physics.acc-ph",
+            "physics.optics",
+            "physics.comp-ph",
+            "physics.med-ph",
+            "nucl-ex",
+            "cs.LG",
+            "cond-mat.mtrl-sci",
+        ]
+        start = datetime(2026, 7, 1, tzinfo=UTC)
+        end = datetime(2026, 7, 2, tzinfo=UTC)
+
+        chunks = _chunk_queries_for_url(queries, categories, start, end)
+
+        self.assertGreater(len(chunks), 1)
+        for chunk in chunks:
+            self.assertLessEqual(_query_url_length(chunk, categories, start, end), MAX_ARXIV_QUERY_URL_LENGTH)

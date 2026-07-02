@@ -13,6 +13,7 @@ from .models import Paper
 
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
+MAX_ARXIV_QUERY_URL_LENGTH = 1800
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 
@@ -39,8 +40,13 @@ def fetch_recent_papers(
 ) -> list[Paper]:
     end = datetime.now(UTC)
     start = end - timedelta(days=lookback_days)
-    search_query = build_combined_search_query(queries, categories, start, end)
-    papers_by_id = {paper.paper_id: paper for paper in fetch_query(search_query, max_results=max_results)}
+    papers_by_id: dict[str, Paper] = {}
+    for query_group in _chunk_queries_for_url(queries, categories, start, end):
+        search_query = build_combined_search_query(query_group, categories, start, end)
+        for paper in fetch_query(search_query, max_results=max_results):
+            papers_by_id[paper.paper_id] = paper
+        if pause_seconds > 0:
+            time.sleep(pause_seconds)
 
     return sorted(papers_by_id.values(), key=lambda paper: paper.updated, reverse=True)
 
@@ -152,6 +158,38 @@ def _parse_datetime(value: str | None) -> datetime:
 
 def _format_date_filter(start: datetime, end: datetime) -> str:
     return f"[{start:%Y%m%d%H%M} TO {end:%Y%m%d%H%M}]"
+
+
+def _chunk_queries_for_url(
+    queries: list[str],
+    categories: list[str],
+    start: datetime,
+    end: datetime,
+) -> list[list[str]]:
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    for query in queries:
+        candidate = [*current, query]
+        if current and _query_url_length(candidate, categories, start, end) > MAX_ARXIV_QUERY_URL_LENGTH:
+            chunks.append(current)
+            current = [query]
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _query_url_length(queries: list[str], categories: list[str], start: datetime, end: datetime) -> int:
+    search_query = build_combined_search_query(queries, categories, start, end)
+    params = {
+        "search_query": search_query,
+        "start": "0",
+        "max_results": "1",
+        "sortBy": "submittedDate",
+        "sortOrder": "descending",
+    }
+    return len(f"{ARXIV_API_URL}?{urllib.parse.urlencode(params)}")
 
 
 def _sleep_before_retry(attempt: int, retry_after: str | None = None) -> None:

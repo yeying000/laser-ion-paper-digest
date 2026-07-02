@@ -64,7 +64,7 @@ def fetch_recent_papers(
     enabled_sources = [str(source) for source in enabled_sources]
     external_queries = source_config.get("external_queries") or DEFAULT_EXTERNAL_QUERIES
     external_queries = [str(query) for query in external_queries if str(query).strip()]
-    request_pause = float(source_config.get("request_pause_seconds", 0.5))
+    request_pause = float(source_config.get("request_pause_seconds", 2.0))
     if pause_seconds is not None:
         request_pause = pause_seconds
     effective_source_config = {**source_config, "request_pause_seconds": request_pause}
@@ -77,13 +77,18 @@ def fetch_recent_papers(
     for source in enabled_sources:
         try:
             if source == "arxiv":
+                arxiv_pause = (
+                    pause_seconds
+                    if pause_seconds is not None
+                    else float(arxiv_config.get("pause_seconds", 3.0))
+                )
                 all_papers.extend(
                     fetch_arxiv_papers(
                         queries=queries,
                         categories=arxiv_config["categories"],
                         lookback_days=lookback_days,
                         max_results=int(arxiv_config.get("max_results", max_results)),
-                        pause_seconds=request_pause,
+                        pause_seconds=arxiv_pause,
                     )
                 )
             elif source == "openalex":
@@ -273,27 +278,32 @@ def _fetch_journal_watchlist(
     headers = _default_headers()
     per_journal = int(config.get("max_results_per_journal", 5))
     source_limit = int(config.get("max_results", max_results * 3))
-    pause_seconds = float(source_config.get("request_pause_seconds", 0.5))
+    pause_seconds = float(source_config.get("request_pause_seconds", 2.0))
     papers: list[Paper] = []
 
     for journal in journals:
         issns = _journal_issns(journal)
         if not issns:
             continue
-        items = _get_json(
-            CROSSREF_API_URL,
-            {
-                "filter": (
-                    f"issn:{issns[0]},"
-                    f"from-pub-date:{start:%Y-%m-%d},"
-                    f"until-pub-date:{end:%Y-%m-%d}"
-                ),
-                "sort": "published",
-                "order": "desc",
-                "rows": str(per_journal),
-            },
-            headers=headers,
-        ).get("message", {}).get("items", [])
+        try:
+            items = _get_json(
+                CROSSREF_API_URL,
+                {
+                    "filter": (
+                        f"issn:{issns[0]},"
+                        f"from-pub-date:{start:%Y-%m-%d},"
+                        f"until-pub-date:{end:%Y-%m-%d}"
+                    ),
+                    "sort": "published",
+                    "order": "desc",
+                    "rows": str(per_journal),
+                },
+                headers=headers,
+            ).get("message", {}).get("items", [])
+        except (TimeoutError, SocketTimeout, urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+            if pause_seconds > 0:
+                time.sleep(pause_seconds)
+            continue
         for item in items:
             paper = _parse_crossref_work(item)
             if paper is None:
@@ -317,9 +327,14 @@ def _fetch_query_pages(
     pause_seconds: float,
 ) -> list[Paper]:
     papers = []
-    per_query = max(1, min(max_results, 25))
+    per_query = max(1, min(max_results, 10))
     for query in queries:
-        items = fetch_items(query, per_query)
+        try:
+            items = fetch_items(query, per_query)
+        except (TimeoutError, SocketTimeout, urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+            if pause_seconds > 0:
+                time.sleep(pause_seconds)
+            continue
         for item in items:
             paper = parse_item(item)
             if paper is not None:
@@ -488,15 +503,15 @@ def _get_json(
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            if exc.code not in {429, 503} or attempt >= retries:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt >= retries:
                 raise
             retry_after = exc.headers.get("Retry-After")
-            delay = int(retry_after) if retry_after and retry_after.isdigit() else 10 * (attempt + 1)
+            delay = int(retry_after) if retry_after and retry_after.isdigit() else 20 * (attempt + 1)
             time.sleep(delay)
         except (TimeoutError, SocketTimeout, urllib.error.URLError):
             if attempt >= retries:
                 raise
-            time.sleep(10 * (attempt + 1))
+            time.sleep(20 * (attempt + 1))
     return {}
 
 
